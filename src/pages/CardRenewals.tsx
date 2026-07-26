@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode, type MouseEvent } from 'react';
 import {
   renewals, drivers, vehicles, fleetCards,
   getDriverById, getCardByLast4,
@@ -645,16 +645,26 @@ function RenewalWizard({
   const [companyAddress, setCompanyAddress] = useState<AddressForm>({
     recipient: '', company: '', street: '', postcode: '', city: '', country: '', instructions: '',
   });
+  const [companyAddressApplied, setCompanyAddressApplied] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<AddressForm>({
     recipient: '', company: '', street: '', postcode: '', city: '', country: '', instructions: '',
   });
 
-  function applyCompanyToAll() {
-    const built = buildAddress(companyAddress);
+  function updateCompanyAddress(field: keyof AddressForm, value: string) {
+    setCompanyAddress((prev) => ({ ...prev, [field]: value }));
+    setCompanyAddressApplied(false);
+  }
+
+  function applyCompanyToAll(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isAddressValid(companyAddress)) return;
+    const builtAddress = buildAddress(companyAddress);
     const next: Record<string, string> = {};
-    selected.forEach((r) => { next[r.id] = built; });
+    selected.forEach((r) => { next[r.id] = builtAddress; });
     setAddresses(next);
+    setCompanyAddressApplied(true);
   }
 
   function startEdit(r: Renewal) {
@@ -664,24 +674,26 @@ function RenewalWizard({
   }
 
   function saveEdit() {
-    if (!editingId) return;
+    if (!editingId || !isAddressValid(editForm)) return;
     setAddresses((prev) => ({ ...prev, [editingId]: buildAddress(editForm) }));
     setEditingId(null);
   }
 
   function handleDeliveryMethodChange(method: 'keep' | 'company') {
     setDeliveryMethod(method);
-    if (method === 'company') {
-      applyCompanyToAll();
-    } else {
+    if (method === 'keep') {
       const next: Record<string, string> = {};
       selected.forEach((r) => { next[r.id] = existingAddresses[r.id] || r.deliveryAddress; });
       setAddresses(next);
+      setCompanyAddressApplied(false);
     }
   }
 
   const companyValid = isAddressValid(companyAddress);
-  const canSubmit = deliveryMethod === 'keep' || (deliveryMethod === 'company' && companyValid);
+  const canSubmit =
+    deliveryMethod === 'keep'
+      ? selected.every((r) => Boolean(addresses[r.id]?.trim()))
+      : companyValid && companyAddressApplied;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -787,43 +799,60 @@ function RenewalWizard({
                   <p className="text-xs text-ink-500 mt-0.5">Retain each card's current renewal delivery address. Individual addresses can be edited above.</p>
                 </div>
               </label>
-              <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+              <div className={`p-3 rounded-xl border transition-all ${
                 deliveryMethod === 'company' ? 'border-edenred-400 bg-edenred-50' : 'border-ink-200 hover:bg-ink-50'
               }`}>
-                <input
-                  type="radio"
-                  name="deliveryMethod"
-                  checked={deliveryMethod === 'company'}
-                  onChange={() => handleDeliveryMethodChange('company')}
-                  className="mt-0.5"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <Building2 size={14} className="text-ink-600" />
-                    <p className="text-sm font-medium text-ink-800">Deliver all replacement cards to company address</p>
+                <label className="flex items-start gap-3 cursor-pointer w-full">
+                  <input
+                    type="radio"
+                    name="deliveryMethod"
+                    checked={deliveryMethod === 'company'}
+                    onChange={() => handleDeliveryMethodChange('company')}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <Building2 size={14} className="text-ink-600" />
+                      <p className="text-sm font-medium text-ink-800">Deliver all replacement cards to company address</p>
+                    </div>
+                    <p className="text-xs text-ink-500 mt-0.5">Apply one company address to all selected cards.</p>
                   </div>
-                  <p className="text-xs text-ink-500 mt-0.5">Apply one company address to all selected cards.</p>
-                  {deliveryMethod === 'company' && (
-                    <div className="mt-3 space-y-2 bg-white rounded-lg p-3 border border-ink-200">
-                      <input value={companyAddress.recipient} onChange={(e) => { setCompanyAddress({ ...companyAddress, recipient: e.target.value }); }} placeholder="Recipient name" className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
-                      <input value={companyAddress.company} onChange={(e) => setCompanyAddress({ ...companyAddress, company: e.target.value })} placeholder="Company name" className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
-                      <input value={companyAddress.street} onChange={(e) => { setCompanyAddress({ ...companyAddress, street: e.target.value }); }} placeholder="Street and house number" className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input value={companyAddress.postcode} onChange={(e) => { setCompanyAddress({ ...companyAddress, postcode: e.target.value }); }} placeholder="Postcode" className="text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
-                        <input value={companyAddress.city} onChange={(e) => { setCompanyAddress({ ...companyAddress, city: e.target.value }); }} placeholder="City" className="text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
-                      </div>
-                      <input value={companyAddress.country} onChange={(e) => { setCompanyAddress({ ...companyAddress, country: e.target.value }); }} placeholder="Country" className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
-                      <textarea value={companyAddress.instructions} onChange={(e) => setCompanyAddress({ ...companyAddress, instructions: e.target.value })} placeholder="Optional delivery instructions" rows={2} className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200 resize-none" />
-                      <button onClick={applyCompanyToAll} className="btn-secondary btn-sm">Apply to all cards</button>
-                      {!companyValid && (
-                        <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                          <AlertTriangle size={12} /> Fill in recipient, street, postcode, city and country to enable submission.
+                </label>
+
+                {deliveryMethod === 'company' && (
+                  <div className="mt-3 space-y-2 bg-white rounded-lg p-3 border border-ink-200">
+                    <input value={companyAddress.recipient} onChange={(e) => updateCompanyAddress('recipient', e.target.value)} placeholder="Recipient name" className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
+                    <input value={companyAddress.company} onChange={(e) => updateCompanyAddress('company', e.target.value)} placeholder="Company name (optional)" className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
+                    <input value={companyAddress.street} onChange={(e) => updateCompanyAddress('street', e.target.value)} placeholder="Street and house number" className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={companyAddress.postcode} onChange={(e) => updateCompanyAddress('postcode', e.target.value)} placeholder="Postcode" className="text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
+                      <input value={companyAddress.city} onChange={(e) => updateCompanyAddress('city', e.target.value)} placeholder="City" className="text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
+                    </div>
+                    <input value={companyAddress.country} onChange={(e) => updateCompanyAddress('country', e.target.value)} placeholder="Country" className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200" />
+                    <textarea value={companyAddress.instructions} onChange={(e) => updateCompanyAddress('instructions', e.target.value)} placeholder="Optional delivery instructions" rows={2} className="w-full text-sm border border-ink-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-edenred-200 resize-none" />
+                    <div className="flex items-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={applyCompanyToAll}
+                        disabled={!companyValid}
+                        className={companyValid ? 'btn-secondary btn-sm' : 'btn-secondary btn-sm opacity-50 cursor-not-allowed'}
+                      >
+                        Apply to all cards
+                      </button>
+                      {companyAddressApplied && (
+                        <p className="text-xs text-emerald-600 flex items-center gap-1">
+                          <CheckCircle2 size={12} /> Company address applied to all selected cards.
                         </p>
                       )}
                     </div>
-                  )}
-                </div>
-              </label>
+                    {!companyValid && (
+                      <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
+                        <AlertTriangle size={12} /> Fill in recipient, street, postcode, city and country.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
